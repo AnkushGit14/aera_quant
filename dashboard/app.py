@@ -26,6 +26,7 @@ from analysis.indicators import (
     compute_garch_vol,
     classify_regime,
     compute_bollinger_bands,
+    compute_hurst,
 )
 from analysis.spreads import get_all_spreads
 from analysis.signals import get_signals_for_all
@@ -166,15 +167,16 @@ def load_all_data():
     rsi_dict    = {a: compute_rsi(p)       for a, p in prices.items()}
     garch_dict  = {a: compute_garch_vol(p) for a, p in prices.items()}
     hist_vol    = {a: garch_dict[a]["hist_vol"] for a in prices}
-    regime_dict = {a: classify_regime(hist_vol[a]) for a in prices}
+    regime_dict = {a: classify_regime(p)   for a, p in prices.items()}
+    hurst_dict  = {a: compute_hurst(p)     for a, p in prices.items()}
     bb_dict     = {a: compute_bollinger_bands(p)   for a, p in prices.items()}
     spreads     = get_all_spreads(prices)
-    signals_df  = get_signals_for_all(prices, rsi_dict, regime_dict, spreads)
-    return prices, vix_series, rsi_dict, garch_dict, hist_vol, regime_dict, bb_dict, spreads, signals_df
+    signals_df  = get_signals_for_all(prices, rsi_dict, regime_dict, spreads, hurst_dict)
+    return prices, vix_series, rsi_dict, garch_dict, hist_vol, regime_dict, bb_dict, spreads, signals_df, hurst_dict
 
 with st.spinner("⏳ Fetching 5Y live market data (12 assets + VIX)..."):
     try:
-        prices, vix_series, rsi_dict, garch_dict, hist_vol, regime_dict, bb_dict, spreads, signals_df = load_all_data()
+        prices, vix_series, rsi_dict, garch_dict, hist_vol, regime_dict, bb_dict, spreads, signals_df, hurst_dict = load_all_data()
     except Exception as e:
         st.error(f"❌ Data fetch failed: {e}")
         st.stop()
@@ -312,7 +314,7 @@ with tab_signals:
         .map(style_signal,  subset=["Signal"])
         .map(style_regime,  subset=["Regime"])
         .map(style_change,  subset=["Change %"])
-        .format({"Price": "{:,.2f}", "RSI": "{:.1f}", "Z-Score": "{:.2f}", "Change %": "{:+.2f}"})
+        .format({"Price": "{:,.2f}", "RSI": "{:.1f}", "Z-Score": "{:.2f}", "Hurst": "{:.2f}", "Change %": "{:+.2f}"})
     )
     st.dataframe(styled_table, width='stretch', hide_index=True, height=200)
 
@@ -470,7 +472,10 @@ with tab_signals:
                 fig5.add_hline(y=-2,  line_dash="dash", line_color=GREEN, line_width=1,
                                annotation_text="-2σ BUY",  annotation_font_color=GREEN)
                 fig5.add_hline(y= 0,  line_dash="dot",  line_color="rgba(255,255,255,0.15)", line_width=1)
-                fig5.update_layout(**layout_base, height=240, title=f"{pair_name}")
+                
+                # Show dynamic hedge ratio on title
+                hr = float(spread_df["HedgeRatio"].iloc[-1]) if "HedgeRatio" in spread_df.columns else 1.0
+                fig5.update_layout(**layout_base, height=240, title=f"{pair_name} (Hedge Ratio: {hr:.3f})")
 
                 fig5.add_annotation(
                     x=zs.index[-1], y=current_z,
@@ -642,23 +647,26 @@ with tab_docs:
     st.markdown('<p class="section-title">Strategy Methodology</p>', unsafe_allow_html=True)
 
     st.markdown("""
-    ### 1. Cointegration & Spread Trading
-    Pairs trading is an market-neutral investment strategy that exploits deviations from a long-term equilibrium. When two assets are cointegrated, their price ratio $S_t = P_{A,t} / P_{B,t}$ forms a stationary series, which means it tends to revert to a constant mean over time.
+    ### 1. Advanced Cointegration via Kalman Filters
+    Instead of standard rolling averages, we use a **Kalman Filter** state-space model to dynamically calculate the optimal hedge ratio ($\\beta_t$) between two assets tick-by-tick. This allows the strategy to adapt instantly to structural correlation breakdowns.
     
-    The system measures this stretch using the rolling Z-score:
+    Observation Equation: $y_t = \\beta_t x_t + \\epsilon_t$
+    State Equation: $\\beta_t = \\beta_{t-1} + \\nu_t$
     
-    $$Z_t = \\frac{S_t - \\mu_{t, n}}{\\sigma_{t, n}}$$
-    
-    Where:
-    - $\\mu_{t, n}$ is the $n$-period rolling average of the price ratio.
-    - $\\sigma_{t, n}$ is the $n$-period rolling standard deviation of the price ratio.
-    
-    **Execution Protocol:**
-    - **Long Spread (Z < −Entry Threshold):** Buy Asset A, Short Asset B (expect the ratio to rise).
-    - **Short Spread (Z > +Entry Threshold):** Sell Asset A, Buy Asset B (expect the ratio to fall).
-    - **Mean Reversion Target (Z = Exit Threshold):** Close all positions as the ratio reverts back to its historical mean.
+    The Kalman Filter produces the residuals (spread), and we calculate the Z-score to determine entry and exit points for mean-reversion trades.
 
     ---
+    
+    ### 2. Hurst Exponent & Chaos Theory
+    Before entering any trade, the engine calculates the **Hurst Exponent (H)** using Rescaled Range (R/S) analysis. This mathematically proves whether a market regime is suitable for mean-reversion.
+    - **H < 0.5**: Anti-persistent (Mean-reverting) → **TRADES ALLOWED**
+    - **H ≈ 0.5**: Random Walk → **NO EDGE**
+    - **H > 0.5**: Persistent (Trending) → **TRADES BLOCKED**
+
+    ---
+
+    ### 3. Machine Learning Regime Detection (Hidden Markov Models)
+    Volatility regimes are detected using an unsupervised **Hidden Markov Model (HMM)**. The HMM observes the sequence of asset returns and probabilistically determines the hidden state (Low, Normal, or High Volatility) without any hardcoded thresholds.
 
     ### 2. GARCH(1,1) Volatility Modeling
     To measure conditional volatility and identify volatility regimes, we fit a Generalized Autoregressive Conditional Heteroskedasticity model (GARCH) with Student-t innovations to accommodate the fat tails of daily returns:

@@ -8,11 +8,11 @@ AeraQuant is a multi-asset quantitative analytics platform that monitors futures
 
 ## Features
 - **Data Pipeline:** Fetches OHLCV data for 12 futures contracts (Energy, Metals, Agriculture, Equities, Rates, FX) via `yfinance`.
-- **Volatility Modeling (GARCH):** Fits a GARCH(1,1) model with Student-t innovations on daily returns for regime detection and short-term volatility forecasting.
-- **Cointegration Signals:** Calculates rolling Z-scores for 6 standard cross-asset spreads (e.g., Gold/Crude, ES/NQ, EUR/GBP) to identify mean-reversion setups.
-- **Backtesting Engine:** Simulates Z-Score mean-reversion strategies to calculate Sharpe Ratio, Max Drawdown, and Win Rate.
+- **Advanced Cointegration (Kalman Filters):** Dynamically calculates optimal hedge ratios between assets using a State-Space Kalman Filter, adapting instantly to correlation breakdowns.
+- **Volatility Modeling (GARCH & HMM):** Fits a GARCH(1,1) model for short-term forecasting, and uses an Unsupervised **Hidden Markov Model (HMM)** for market regime detection without hardcoded thresholds.
+- **Market Memory (Hurst Exponent):** Employs Rescaled Range Analysis (Hurst Exponent) to mathematically prove whether a market is mean-reverting (H < 0.5) before taking a trade, blocking trades in trending markets.
+- **Backtesting Engine:** Simulates the Kalman Z-Score mean-reversion strategy to calculate Sharpe Ratio, Max Drawdown, and Win Rate.
   ![Strategy Backtester & Execution Logs](assets/dashboard_backtest.png)
-- **Macro Overlay:** Uses the VIX as a regime filter to suppress long signals during high-volatility (Risk-Off) market conditions.
 
 ## Project Structure
 ```

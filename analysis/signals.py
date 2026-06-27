@@ -16,9 +16,9 @@ ZSCORE_SELL   = +1.5
 
 
 # ── Single-Asset Signal ───────────────────────────────────────────────────────
-def generate_signal(rsi_val: float, regime: str, zscore: float) -> dict:
+def generate_signal(rsi_val: float, regime: str, zscore: float, hurst: float = 0.5) -> dict:
     """
-    Combines RSI, regime, and Z-score into a final signal.
+    Combines RSI, regime, Z-score, and Hurst Exponent into a final signal.
 
     Returns dict:
       signal     — "BUY" | "SELL" | "HOLD"
@@ -46,12 +46,19 @@ def generate_signal(rsi_val: float, regime: str, zscore: float) -> dict:
     elif regime == "HIGH":
         sell_flags.append("High-vol regime (risk-off)")
 
+    # Hurst Exponent (Memory)
+    is_trending = hurst >= 0.5
+    if hurst < 0.5:
+        buy_flags.append(f"Mean-reverting (H={hurst:.2f})")
+        sell_flags.append(f"Mean-reverting (H={hurst:.2f})")
+
     # Final decision: need at least 2 buy flags for BUY (confluence)
-    if len(buy_flags) >= 2 and regime != "HIGH":
+    # CRITICAL: We block mean-reversion trades if the market is trending (H >= 0.5)
+    if len(buy_flags) >= 2 and regime != "HIGH" and not is_trending:
         signal     = "BUY"
         confidence = min(100, 40 + len(buy_flags) * 20)
         reasons    = buy_flags
-    elif len(sell_flags) >= 2:
+    elif len(sell_flags) >= 2 and not is_trending:
         signal     = "SELL"
         confidence = min(100, 40 + len(sell_flags) * 20)
         reasons    = sell_flags
@@ -59,6 +66,8 @@ def generate_signal(rsi_val: float, regime: str, zscore: float) -> dict:
         signal     = "HOLD"
         confidence = 50
         reasons    = buy_flags + sell_flags if (buy_flags or sell_flags) else ["Neutral conditions"]
+        if is_trending:
+            reasons.insert(0, f"Trending market block (H={hurst:.2f})")
 
     return {
         "signal":     signal,
@@ -69,11 +78,11 @@ def generate_signal(rsi_val: float, regime: str, zscore: float) -> dict:
 
 # ── All Assets Signal Table ───────────────────────────────────────────────────
 def get_signals_for_all(prices: dict, rsi_dict: dict,
-                         regime_dict: dict, spreads: dict) -> pd.DataFrame:
+                         regime_dict: dict, spreads: dict, hurst_dict: dict) -> pd.DataFrame:
     """
     Generates the full signal summary DataFrame with one row per asset.
 
-    Columns: Asset, Price, Change%, RSI, Regime, ZScore, Signal, Confidence, Reason
+    Columns: Asset, Price, Change%, RSI, Regime, ZScore, Hurst, Signal, Confidence, Reason
     """
     rows = []
 
@@ -91,8 +100,9 @@ def get_signals_for_all(prices: dict, rsi_dict: dict,
         rsi_val = float(rsi_series.iloc[-1]) if not rsi_series.empty else 50.0
         regime  = str(regime_series.iloc[-1]) if not regime_series.empty else "NORMAL"
         zscore  = get_zscore_for_asset(asset, spreads)
+        hurst   = hurst_dict.get(asset, 0.5)
 
-        sig = generate_signal(rsi_val, regime, zscore)
+        sig = generate_signal(rsi_val, regime, zscore, hurst)
 
         rows.append({
             "Asset":      asset,
@@ -101,6 +111,7 @@ def get_signals_for_all(prices: dict, rsi_dict: dict,
             "RSI":        round(rsi_val, 1),
             "Regime":     regime,
             "Z-Score":    round(zscore, 2),
+            "Hurst":      round(hurst, 2),
             "Signal":     sig["signal"],
             "Confidence": f"{sig['confidence']}%",
             "Reason":     sig["reasons"],
