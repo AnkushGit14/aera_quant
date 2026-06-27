@@ -5,7 +5,6 @@ Calculates rolling Z-scores for predefined asset pairs to identify mean-reversio
 
 import pandas as pd
 import numpy as np
-from pykalman import KalmanFilter
 
 
 # ── Rolling Z-Score ───────────────────────────────────────────────────────────
@@ -19,41 +18,25 @@ def compute_rolling_zscore(series: pd.Series, window: int = 20) -> pd.Series:
     return ((series - mean) / std).rename("ZScore")
 
 
-# ── Cross-Asset Spread (Kalman Filter) ────────────────────────────────────────
-def compute_kalman_spread(s1: pd.Series, s2: pd.Series,
-                          name1: str, name2: str,
-                          window: int = 20) -> pd.DataFrame:
+# ── Cross-Asset Spread ────────────────────────────────────────────────────────
+def compute_cross_asset_spread(s1: pd.Series, s2: pd.Series,
+                                name1: str, name2: str,
+                                window: int = 20) -> pd.DataFrame:
     """
-    Computes a dynamic hedge ratio using a Kalman Filter.
-    Returns the spread and its rolling Z-score.
-    
+    Computes the price ratio between two assets, then its rolling Z-score.
+
+    Example: Gold/Crude ratio — if unusually high, Gold is expensive relative
+    to Crude; a mean-reversion trade would be to sell Gold / buy Crude.
+
     Returns DataFrame with columns:
-      name1, name2, Ratio (Kalman Spread), ZScore, HedgeRatio
+      name1, name2, Ratio, ZScore
     """
     aligned = pd.concat([s1, s2], axis=1).dropna()
     aligned.columns = [name1, name2]
 
-    # Observation matrices for Kalman Filter: shape (n_timesteps, 1, 1)
-    obs_mat = aligned[name2].values[:, np.newaxis, np.newaxis]
-    
-    kf = KalmanFilter(n_dim_obs=1, n_dim_state=1,
-                      initial_state_mean=0.0,
-                      initial_state_covariance=1.0,
-                      transition_matrices=[1],
-                      observation_matrices=obs_mat,
-                      observation_covariance=1.0,
-                      transition_covariance=0.01)
-                      
-    state_means, _ = kf.filter(aligned[name1].values)
-    hedge_ratio = state_means.flatten()
-    
-    # Spread = Asset1 - (HedgeRatio * Asset2)
-    kalman_spread = aligned[name1].values - (hedge_ratio * aligned[name2].values)
-    
-    # Store in 'Ratio' so downstream code works seamlessly
-    aligned["Ratio"]  = kalman_spread
-    aligned["HedgeRatio"] = hedge_ratio
-    aligned["ZScore"] = compute_rolling_zscore(pd.Series(kalman_spread, index=aligned.index), window=window)
+    # Ratio spread
+    aligned["Ratio"]  = aligned[name1] / aligned[name2]
+    aligned["ZScore"] = compute_rolling_zscore(aligned["Ratio"], window=window)
 
     return aligned
 
@@ -70,37 +53,37 @@ def get_all_spreads(prices: dict, window: int = 20) -> dict:
 
     # 1. Gold / Crude Oil
     if "Gold" in available and "Crude Oil" in available:
-        spreads["Gold / Crude Oil"] = compute_kalman_spread(
+        spreads["Gold / Crude Oil"] = compute_cross_asset_spread(
             prices["Gold"], prices["Crude Oil"], "Gold", "Crude", window=window
         )
 
     # 2. S&P 500 / Crude Oil
     if "S&P 500" in available and "Crude Oil" in available:
-        spreads["S&P 500 / Crude Oil"] = compute_kalman_spread(
+        spreads["S&P 500 / Crude Oil"] = compute_cross_asset_spread(
             prices["S&P 500"], prices["Crude Oil"], "ES", "Crude", window=window
         )
 
     # 3. Gold / S&P 500
     if "Gold" in available and "S&P 500" in available:
-        spreads["Gold / S&P 500"] = compute_kalman_spread(
+        spreads["Gold / S&P 500"] = compute_cross_asset_spread(
             prices["Gold"], prices["S&P 500"], "Gold", "ES", window=window
         )
 
     # 4. Gold / Silver (Precious Metals Ratio)
     if "Gold" in available and "Silver" in available:
-        spreads["Gold / Silver"] = compute_kalman_spread(
+        spreads["Gold / Silver"] = compute_cross_asset_spread(
             prices["Gold"], prices["Silver"], "Gold", "Silver", window=window
         )
 
     # 5. S&P 500 / Nasdaq 100 (Index Spread)
     if "S&P 500" in available and "Nasdaq 100" in available:
-        spreads["S&P 500 / Nasdaq 100"] = compute_kalman_spread(
+        spreads["S&P 500 / Nasdaq 100"] = compute_cross_asset_spread(
             prices["S&P 500"], prices["Nasdaq 100"], "ES", "NQ", window=window
         )
 
     # 6. EUR/USD / GBP/USD (FX Cointegration)
     if "EUR/USD" in available and "GBP/USD" in available:
-        spreads["EUR/USD / GBP/USD"] = compute_kalman_spread(
+        spreads["EUR/USD / GBP/USD"] = compute_cross_asset_spread(
             prices["EUR/USD"], prices["GBP/USD"], "EURUSD", "GBPUSD", window=window
         )
 

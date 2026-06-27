@@ -23,13 +23,6 @@ def run_spread_backtest(spread_df: pd.DataFrame, entry_z: float = 2.0, exit_z: f
 
     # Calculate log returns of the spread ratio itself
     df["Spread_Return"] = np.log(df["Ratio"] / df["Ratio"].shift(1))
-    
-    # Calculate rolling Hurst exponent to block trades when trending
-    from analysis.indicators import compute_hurst
-    # Use a 60-day window to calculate rolling Hurst (takes ~0.5s for 1200 days)
-    df["Hurst"] = df["Ratio"].rolling(60).apply(lambda x: compute_hurst(pd.Series(x), max_lag=20), raw=False)
-    df["Hurst"] = df["Hurst"].fillna(0.5) # Default to neutral
-    
     df.dropna(inplace=True)
 
     position = 0  # +1: Long, -1: Short, 0: Cash
@@ -38,7 +31,6 @@ def run_spread_backtest(spread_df: pd.DataFrame, entry_z: float = 2.0, exit_z: f
 
     for i in range(len(df)):
         z = df["ZScore"].iloc[i]
-        h = df["Hurst"].iloc[i]
         
         # Check exits
         if position == 1 and z >= -exit_z:
@@ -46,8 +38,8 @@ def run_spread_backtest(spread_df: pd.DataFrame, entry_z: float = 2.0, exit_z: f
         elif position == -1 and z <= exit_z:
             position = 0
             
-        # Check entries (Only enter if Mean-Reverting i.e., H < 0.5)
-        if position == 0 and h < 0.5:
+        # Check entries
+        if position == 0:
             if z < -entry_z:
                 position = 1
                 trade_signals.append(1)

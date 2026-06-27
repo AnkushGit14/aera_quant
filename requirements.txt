@@ -5,5 +5,3 @@ arch>=6.0.0
 streamlit>=1.30.0
 plotly>=5.18.0
 scipy>=1.11.0
-pykalman>=0.9.5
-hmmlearn>=0.3.0
