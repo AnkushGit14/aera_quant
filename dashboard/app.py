@@ -235,7 +235,7 @@ if not vix_series.empty:
     </div>
     """, unsafe_allow_html=True)
 
-# ── KPI Strip — Sector-Grouped ────────────────────────────────────────────────
+# ── KPI Strip — Compact Grid ──────────────────────────────────────────────────
 st.markdown('<p class="section-title">Live Market Snapshot — 12 Assets · 5Y Data</p>',
             unsafe_allow_html=True)
 
@@ -244,19 +244,20 @@ SECTOR_ICONS = {
     "Equity": "📈", "Rates": "🏦", "FX": "💱"
 }
 
+# Flatten all available assets into a single list
+all_assets = []
 for sector_name, asset_list in sectors.items():
-    # Only show sectors that have data
-    available = [a for a in asset_list if a in prices]
-    if not available:
-        continue
-
     icon = SECTOR_ICONS.get(sector_name, "")
-    st.markdown(f'<div style="font-size:11px;font-weight:600;color:rgba(226,232,240,0.4);'
-                f'text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px 2px;">'
-                f'{icon} {sector_name}</div>', unsafe_allow_html=True)
+    for asset in asset_list:
+        if asset in prices:
+            all_assets.append((asset, icon))
 
-    cols = st.columns(len(available))
-    for col, asset in zip(cols, available):
+# Render in a compact grid (6 columns per row)
+num_cols = 6
+for i in range(0, len(all_assets), num_cols):
+    cols = st.columns(num_cols)
+    chunk = all_assets[i:i + num_cols]
+    for col, (asset, icon) in zip(cols, chunk):
         price_series = prices[asset]
         price_now    = float(price_series.iloc[-1])
         price_prev   = float(price_series.iloc[-2])
@@ -266,10 +267,10 @@ for sector_name, asset_list in sectors.items():
         ticker       = meta.get(asset, {}).get("ticker", "")
         with col:
             st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">{asset} · {ticker}</div>
-                <div class="metric-value" style="font-size:18px">{price_now:,.2f}</div>
-                <div class="metric-value {color_cls}" style="font-size:13px;margin-top:3px">
+            <div class="metric-card" style="padding:10px 8px; margin-bottom:12px;">
+                <div class="metric-label" style="font-size:9px;">{icon} {asset}</div>
+                <div class="metric-value" style="font-size:15px;">{price_now:,.2f}</div>
+                <div class="metric-value {color_cls}" style="font-size:11px;margin-top:2px;">
                     {arrow} {abs(chg):.2f}%
                 </div>
             </div>
