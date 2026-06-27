@@ -1,12 +1,17 @@
 # AeraQuant
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://aera-quant.streamlit.app)
+
 AeraQuant is a multi-asset quantitative analytics platform that monitors futures markets using volatility modeling and statistical arbitrage signals.
+
+![Dashboard Preview](assets/dashboard.png)
 
 ## Features
 - **Data Pipeline:** Fetches OHLCV data for 12 futures contracts (Energy, Metals, Agriculture, Equities, Rates, FX) via `yfinance`.
 - **Volatility Modeling (GARCH):** Fits a GARCH(1,1) model with Student-t innovations on daily returns for regime detection and short-term volatility forecasting.
 - **Cointegration Signals:** Calculates rolling Z-scores for 6 standard cross-asset spreads (e.g., Gold/Crude, ES/NQ, EUR/GBP) to identify mean-reversion setups.
 - **Backtesting Engine:** Simulates Z-Score mean-reversion strategies to calculate Sharpe Ratio, Max Drawdown, and Win Rate.
+  ![Backtester Preview](assets/backtester.png)
 - **Macro Overlay:** Uses the VIX as a regime filter to suppress long signals during high-volatility (Risk-Off) market conditions.
 
 ## Project Structure
